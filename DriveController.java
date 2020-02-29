@@ -24,11 +24,10 @@ public class DriveController {
     public final double START_DRIVE_SLOWDOWN_AT_CM = 15;
 
     //maximum number of times the robot will try to correct its heading when rotating
-    public final int MAX_ITERATIONS_ROBOT_ROTATE = 3;
+    public final int MAX_ITERATIONS_ROBOT_ROTATE = 2;
 
     //will multiply the input from the rotation joystick (max value of 1) by this factor
     public final double ROBOT_ROTATION_SCALE_FACTOR = 0.7;
-
 
     public DriveController(Robot robot) {
         this.robot = robot;
@@ -51,8 +50,6 @@ public class DriveController {
         moduleLeft.updateTarget(translationVector, rotationMagnitude);
         moduleRight.updateTarget(translationVector, rotationMagnitude);
     }
-
-
 
     //AUTONOMOUS METHODS
     //do NOT call in a loop
@@ -82,9 +79,9 @@ public class DriveController {
         boolean isNegativeRotation = robot.getRobotHeading().directionTo(targetAngle) == Angle.Direction.CLOCKWISE;
 
         double absHeadingDiff = robot.getRobotHeading().getDifference(targetAngle);
-        while (absHeadingDiff > ALLOWED_MODULE_ROT_ERROR && linearOpMode.opModeIsActive() && iterations < MAX_ITERATIONS_ROBOT_ROTATE) {
+        while (absHeadingDiff > ALLOWED_MODULE_ROT_ERROR && linearOpMode.opModeIsActive() && iterations < MAX_ITERATIONS_ROBOT_ROTATE /*&& System.currentTimeMillis() - startTime < ROTATE_ROBOT_TIMEOUT*/) {
             absHeadingDiff = robot.getRobotHeading().getDifference(targetAngle);
-            double rotMag = RobotUtil.scaleVal(absHeadingDiff, 0, 45, .1, .5); //was max power 1
+            double rotMag = RobotUtil.scaleVal(absHeadingDiff, 0, 25, 0, power); //was max power 1 - WAS 0.4 max power
 
             if (robot.getRobotHeading().directionTo(targetAngle) == Angle.Direction.CLOCKWISE) {
                 update(Vector2d.ZERO, -rotMag);
@@ -100,22 +97,22 @@ public class DriveController {
     }
 
     //both modules must be within allowed error for method to return
-    public void rotateModules(Vector2d direction, double timemoutMS, LinearOpMode linearOpMode) {
+    public void rotateModules(Vector2d direction, boolean fieldCentric, double timemoutMS, LinearOpMode linearOpMode) {
         //TODO: check if this will work with reversed modules
         double moduleLeftDifference, moduleRightDifference;
         double startTime = System.currentTimeMillis();
         do {
-            moduleLeftDifference = moduleLeft.getCurrentOrientation().getDifference(direction.getAngleAngle());
-            moduleRightDifference = moduleRight.getCurrentOrientation().getDifference(direction.getAngleAngle());
-            moduleLeft.rotateModule(direction);
-            moduleRight.rotateModule(direction);
+            moduleLeftDifference = moduleLeft.getCurrentOrientation().getDifference(direction.getAngle()); //was getRealAngle() (don't ask)
+            moduleRightDifference = moduleRight.getCurrentOrientation().getDifference(direction.getAngle());
+            moduleLeft.rotateModule(direction, fieldCentric);
+            moduleLeft.rotateModule(direction, fieldCentric);
+            moduleRight.rotateModule(direction, fieldCentric);
 
             linearOpMode.telemetry.addData("Rotating MODULES", "");
             linearOpMode.telemetry.update();
         } while ((moduleLeftDifference > ALLOWED_MODULE_ROT_ERROR || moduleRightDifference > ALLOWED_MODULE_ROT_ERROR) && linearOpMode.opModeIsActive() && System.currentTimeMillis() < startTime + timemoutMS);
         update(Vector2d.ZERO, 0);
     }
-
 
 
     //TRACKING METHODS
@@ -145,9 +142,6 @@ public class DriveController {
     public double getDistanceTraveled() {
         return Math.abs(robotDistanceTraveled);
     }
-
-
-
 
     public void resetEncoders() {
         moduleRight.resetEncoders();

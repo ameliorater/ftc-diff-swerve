@@ -73,6 +73,10 @@ public class DriveModule {
         lastMotor1Encoder = motor1.getCurrentPosition();
         lastMotor2Encoder = motor2.getCurrentPosition();
 
+        //set run mode to NOT use encoders for velocity PID regulation
+        motor1.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        motor2.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+
         motor1.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         motor2.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
     }
@@ -80,24 +84,22 @@ public class DriveModule {
 
     public void updateTarget (Vector2d transVec, double rotMag) { //translation vector and rotation magnitude
         //converts robot heading to the angle type used by Vector2d class
-        Angle convertedRobotHeading = robot.getRobotHeading().convertAngle(Angle.AngleType.NEG_180_TO_180_CARTESIAN);
-
         //converts the translation vector from a robot centric to a field centric one
-        Vector2d transVecFC = transVec.rotate(convertedRobotHeading.getAngle());
+        Vector2d transVecFC = transVec.rotateBy(robot.getRobotHeading().getAngle(Angle.AngleType.ZERO_TO_360_HEADING), Angle.Direction.COUNTER_CLOCKWISE); //was converted robot heading, was clockwise
 
         //vector needed to rotate robot at the desired magnitude
         //based on positionVector of module (see definition for more info)
-        Vector2d rotVec = positionVector.normalize(rotMag);//.rotate(90); //theoretically this should be rotated 90, not sure sure it doesn't need to be
+        Vector2d rotVec = positionVector.normalize(rotMag).rotateBy(90, Angle.Direction.COUNTER_CLOCKWISE); //theoretically this should be rotated 90, not sure sure it doesn't need to be
 
         //combine desired robot translation and robot rotation to get goal vector for the module
         Vector2d targetVector = transVecFC.add(rotVec);
 
         //allows modules to reverse power instead of rotating 180 degrees
         //example: useful when going from driving forwards to driving backwards
-        int directionMultiplier = 1;
+        int directionMultiplier = -1; //was positive 1
         if (reversed) { //reverse direction of translation because module is reversed
             targetVector = targetVector.reflect();
-            directionMultiplier = -1;
+            directionMultiplier = 1;
         }
 
         //calls method that will apply motor powers necessary to reach target vector in the best way possible, based on current position
@@ -136,12 +138,12 @@ public class DriveModule {
     //returns a scalar corresponding to how much power the module needs to apply to rotating
     //this is necessary because of the differential nature of a diff swerve drive
     public double getPivotComponent (Vector2d targetVector, Angle currentAngle) {
-        Angle targetAngle = targetVector.getAngleAngle();
+        Angle targetAngle = targetVector.getAngle();
         double angleDiff = targetAngle.getDifference(currentAngle); //number from 0 to 180 (always positive)
 
         //allows module to rotate to the opposite position of (180 degrees away from) its target
         //if this is the fastest path, we need to indicate that the direction of translation should be reversed
-        if (Math.abs(angleDiff) > 90) {
+        if (Math.abs(angleDiff) > 110) { //was 90
             if (!takingShortestPath) {
                 reversed = !reversed; //reverse translation direction bc module is newly reversed
             }
@@ -188,10 +190,10 @@ public class DriveModule {
         double motor2power = motorPowersScaled[1].getMagnitude();
 
         //this is to add sign to magnitude, which returns an absolute value
-        if (motorPowersScaled[0].getAngle() != MOTOR_1_VECTOR.getAngle()) {
+        if (motorPowersScaled[0].getAngleDouble(Angle.AngleType.NEG_180_TO_180_CARTESIAN) != MOTOR_1_VECTOR.getAngleDouble(Angle.AngleType.NEG_180_TO_180_CARTESIAN)) {
             motor1power *= -1;
         }
-        if (motorPowersScaled[1].getAngle() != MOTOR_2_VECTOR.getAngle()) {
+        if (motorPowersScaled[1].getAngleDouble(Angle.AngleType.NEG_180_TO_180_CARTESIAN) != MOTOR_2_VECTOR.getAngleDouble(Angle.AngleType.NEG_180_TO_180_CARTESIAN)) {
             motor2power *= -1;
         }
 
@@ -203,9 +205,26 @@ public class DriveModule {
 
 
     //for pure module rotation (usually used for precise driving in auto)
-    public void rotateModule (Vector2d direction) {
+    public void rotateModule (Vector2d direction, boolean fieldCentric) {
+        //converts robot heading to the angle type used by Vector2d class
+        Angle convertedRobotHeading = robot.getRobotHeading().convertAngle(Angle.AngleType.NEG_180_TO_180_CARTESIAN);
+
         //pass 0 as moveComponent
-        Vector2d powerVector = new Vector2d(0, getPivotComponent(direction, getCurrentOrientation())); //order important here
+        //todo: check if fixes broke this
+        Vector2d directionFC = direction.rotateTo(robot.getRobotHeading()); //was converted robot heading
+
+        //ADDED
+        if (reversed) { //reverse direction of translation because module is reversed
+            directionFC = directionFC.reflect();
+            direction = direction.reflect();
+        }
+
+        Vector2d powerVector;
+        if (fieldCentric) {
+            powerVector = new Vector2d(0, getPivotComponent(directionFC, getCurrentOrientation())); //order important here
+        } else {
+            powerVector = new Vector2d(0, getPivotComponent(direction, getCurrentOrientation())); //order important here
+        }
         setMotorPowers(powerVector);
         robot.telemetry.addData(moduleSide + " Power Vector: ", powerVector);
         robot.telemetry.addData(moduleSide + " Current orientation: ", getCurrentOrientation().getAngle());
@@ -258,6 +277,8 @@ public class DriveModule {
 
     public void resetDistanceTraveled () {
         distanceTraveled = 0;
+        lastMotor1Encoder = motor1.getCurrentPosition();
+        lastMotor2Encoder = motor2.getCurrentPosition();
     }
 
     //returns distance (in cm) traveled since distance was last reset
