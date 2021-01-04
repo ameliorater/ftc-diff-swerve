@@ -61,6 +61,7 @@ public class Angle {
         return this.convertAngle(type).getAngle();
     }
 
+    public double getAngle () { return angle; }
     public AngleType getType () { return type; }
 
     @Override

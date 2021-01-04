@@ -17,12 +17,14 @@ public class Vector2d {
     public Vector2d(double x, double y) {
         this.x = x;
         this.y = y;
+        this.fixFloatingPointErrors();
     }
 
     //makes a unit vector with a certain angle
     public Vector2d(Angle angle) {
         this.x = Math.cos(Math.toRadians(angle.convertAngle(Angle.AngleType.NEG_180_TO_180_CARTESIAN).getAngle()));
         this.y = Math.sin(Math.toRadians(angle.convertAngle(Angle.AngleType.NEG_180_TO_180_CARTESIAN).getAngle()));
+        this.fixFloatingPointErrors();
     }
 
     public double getX() {
@@ -41,10 +43,24 @@ public class Vector2d {
         return Math.sqrt(x * x + y * y);
     }
 
+    public void fixFloatingPointErrors() {
+        if (Math.abs(this.x) < 1e-5) {
+            this.x = 0;
+        }
+        if (Math.abs(this.y) < 1e-5) {
+            this.y = 0;
+        }
+    }
+
     //returns Angle object
     public Angle getAngle() {
         double angRad = Math.atan2(y, x);
         return new Angle(Math.toDegrees(angRad), Angle.AngleType.NEG_180_TO_180_CARTESIAN);
+    }
+
+    //returns numerical value for angle in specified type
+    public double getAngleDouble(Angle.AngleType type) {
+        return this.getAngle().convertAngle(type).getAngle();
     }
 
     public Vector2d add(Vector2d other) {
@@ -61,6 +77,7 @@ public class Vector2d {
 
     //returns a Vector2d in the same direction with magnitude of "target"
     public Vector2d normalize(double target) {
+        if (getMagnitude() == 0) return ZERO; //avoid dividing by zero
         return scale(target / getMagnitude());
     }
 
